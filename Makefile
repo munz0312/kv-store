@@ -1,10 +1,21 @@
-CC = g++
-CFLAGS = -std=c++20 -Wall -Wextra -Wpedantic -O2
+CXX      = g++
+CXXFLAGS = -std=c++20 -Wall -Wextra -Wpedantic -O2
 
-server: server.cpp
-	$(CC) $(CFLAGS) -o $@ $<
+all: server client
+
+server: server.o hashtable.o
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+client: 07_client.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $<
+
+server.o: server.cpp hashtable.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+hashtable.o: hashtable.cpp hashtable.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
-	rm -f server
+	rm -f server client *.o
 
-.PHONY: clean
+.PHONY: all clean

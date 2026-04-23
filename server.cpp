@@ -176,7 +176,7 @@ struct Entry {
 
 static bool entry_eq(HNode *lhs, HNode *rhs) {
     struct Entry *le = container_of(lhs, struct Entry, node);
-    struct Entry *re = container_of(lhs, struct Entry, node);
+    struct Entry *re = container_of(rhs, struct Entry, node);
     return le->key == re->key;
 }
 
