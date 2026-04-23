@@ -14,9 +14,12 @@ static void h_insert(HTab *htab, HNode *node) {
     std::size_t pos{node->hash_value & htab->mask};
     node->next = htab->tab[pos];
     htab->tab[pos] = node;
+    htab->size++;
 }
 
 static HNode **h_lookup(HTab *htab, HNode *key, bool (*eq)(HNode *, HNode *)) {
+    if (!htab->tab)
+        return NULL;
     std::size_t pos{key->hash_value & htab->mask};
     HNode **from = &htab->tab[pos];
     for (HNode *cur; (cur = *from) != NULL; from = &cur->next) {
@@ -46,7 +49,7 @@ static void hm_help_rehashing(HMap *hmap) {
             hmap->migrate_pos++;
             continue;
         }
-        h_insert(&hmap->newer, *from);
+        h_insert(&hmap->newer, h_detach(&hmap->older, from));
         nwork++;
     }
 
