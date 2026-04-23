@@ -19,9 +19,9 @@
 #define MAX_EVENTS 64
 #define BUF_SIZE 4096
 
-const long MAX_MSG_SIZE{32 << 20};
-const int PORT{8080};
-const size_t K_MAX_ARGS = 200 * 1000;
+constexpr long MAX_MSG_SIZE{32 << 20};
+constexpr int PORT{8080};
+constexpr size_t K_MAX_ARGS = 200 * 1000;
 
 static void msg(const char *msg) { fprintf(stderr, "%s\n", msg); }
 
