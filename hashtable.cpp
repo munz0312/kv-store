@@ -1,18 +1,7 @@
+#include "hashtable.h"
 #include <cassert>
 #include <cstddef>
-#include <cstdint>
 #include <cstdlib>
-
-struct HNode {
-    HNode *next;
-    uint64_t hash_value;
-};
-
-struct HTab {
-    HNode **tab;
-    std::size_t size;
-    std::size_t mask;
-};
 
 static void h_init(std::size_t n, HTab *htab) {
     assert(n > 0 && ((n - 1) & n) == 0);
@@ -44,3 +33,69 @@ static HNode *h_detach(HTab *htab, HNode **target) {
     htab->size--;
     return node;
 }
+
+constexpr std::size_t k_max_load_factor{8};
+
+constexpr std::size_t k_rehashing_work{128};
+
+static void hm_help_rehashing(HMap *hmap) {
+    std::size_t nwork{0};
+    while (nwork < k_rehashing_work && hmap->older.size > 0) {
+        HNode **from = &hmap->older.tab[hmap->migrate_pos];
+        if (!*from) {
+            hmap->migrate_pos++;
+            continue;
+        }
+        h_insert(&hmap->newer, *from);
+        nwork++;
+    }
+
+    if (hmap->older.size == 0 && hmap->older.tab) {
+        free(hmap->older.tab);
+        hmap->older = HTab{};
+    }
+}
+
+static void hm_trigger_rehashing(HMap *hmap) {
+    hmap->older = hmap->newer;
+    h_init((hmap->newer.size + 1) * 2, &hmap->newer);
+}
+
+HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *)) {
+    HNode **from = h_lookup(&hmap->newer, key, eq);
+    if (!from) {
+        from = h_lookup(&hmap->older, key, eq);
+    }
+    return from ? *from : NULL;
+};
+
+HNode *hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *)) {
+    if (auto from = h_lookup(&hmap->newer, key, eq)) {
+        return h_detach(&hmap->newer, from);
+    }
+    if (auto from = h_lookup(&hmap->older, key, eq)) {
+        return h_detach(&hmap->older, from);
+    }
+    return NULL;
+}
+
+void hm_insert(HMap *hmap, HNode *node) {
+    if (!(hmap->newer.tab)) {
+        h_init(4, &hmap->newer);
+    }
+    h_insert(&hmap->newer, node);
+    if (!(hmap->older.tab)) {
+        std::size_t threshold{(hmap->newer.mask + 1) * k_max_load_factor};
+        if (hmap->newer.size >= threshold) {
+            hm_trigger_rehashing(hmap);
+        }
+    }
+}
+
+void hm_clear(HMap *hmap) {
+    free(hmap->older.tab);
+    free(hmap->newer.tab);
+    *hmap = HMap{};
+}
+
+std::size_t hm_size(HMap *hmap) { return hmap->older.size + hmap->newer.size; }
