@@ -94,7 +94,7 @@ static void out_str(Buffer &out, const char *data, std::size_t len) {
     // append len
     buf_append_u32(out, len);
     // append data
-    buf_append(out, (const uint8_t *)data, len + 4);
+    buf_append(out, (const uint8_t *)data, len);
 }
 
 static void out_int(Buffer &out, int64_t val) {

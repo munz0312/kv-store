@@ -6,7 +6,7 @@ all: server client
 server: server.o hashtable.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-client: 07_client.cpp
+client: client.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $<
 
 server.o: server.cpp hashtable.h
