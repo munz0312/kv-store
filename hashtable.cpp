@@ -37,6 +37,20 @@ static HNode *h_detach(HTab *htab, HNode **target) {
     return node;
 }
 
+static void h_foreach(HTab *htab, bool (*callback)(HNode *, void *),
+                      void *arg) {
+    if (!htab->tab) {
+        return;
+    }
+
+    for (std::size_t i = 0; i <= htab->mask; i++) {
+        for (HNode *n = htab->tab[i]; n != NULL; n = n->next) {
+            if (!callback(n, arg))
+                return;
+        }
+    }
+}
+
 constexpr std::size_t k_max_load_factor{8};
 
 constexpr std::size_t k_rehashing_work{128};
@@ -106,3 +120,8 @@ void hm_clear(HMap *hmap) {
 }
 
 std::size_t hm_size(HMap *hmap) { return hmap->older.size + hmap->newer.size; }
+
+void hm_foreach(HMap *hmap, bool (*callback)(HNode *, void *), void *arg) {
+    h_foreach(&hmap->newer, callback, arg);
+    h_foreach(&hmap->older, callback, arg);
+}

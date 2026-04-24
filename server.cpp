@@ -31,7 +31,7 @@ static void msg_errno(const char *msg) {
 
 // append to the back
 static void buf_append(std::vector<uint8_t> &buf, const uint8_t *data,
-                       size_t len) {
+                       std::size_t len) {
     buf.insert(buf.end(), data, data + len);
 }
 
@@ -58,7 +58,59 @@ enum {
     RES_OK = 0,
     RES_ERR = 1,
     RES_NX = 2,
+    ERR_TOO_BIG = 3,
 };
+
+enum {
+    TAG_NIL = 0,
+    TAG_ERR = 1,
+    TAG_STR = 2,
+    TAG_INT = 3,
+    TAG_DBL = 4,
+    TAG_ARR = 5,
+};
+
+using Buffer = std::vector<uint8_t>;
+
+static void buf_append_u8(Buffer &buf, uint8_t data) { buf.push_back(data); }
+
+static void buf_append_u32(Buffer &buf, uint32_t data) {
+    buf_append(buf, (const uint8_t *)&data, 4);
+}
+
+static void buf_append_i64(Buffer &buf, int64_t data) {
+    buf_append(buf, (const uint8_t *)&data, sizeof(int64_t));
+}
+
+static void buf_append_dbl(Buffer &buf, double data) {
+    buf_append(buf, (const uint8_t *)&data, sizeof(double));
+}
+
+static void out_nil(Buffer &out) { buf_append_u8(out, TAG_NIL); }
+
+static void out_str(Buffer &out, const char *data, std::size_t len) {
+    // append tag
+    buf_append_u8(out, TAG_STR);
+    // append len
+    buf_append_u32(out, len);
+    // append data
+    buf_append(out, (const uint8_t *)data, len + 4);
+}
+
+static void out_int(Buffer &out, int64_t val) {
+    buf_append_u8(out, TAG_INT);
+    buf_append_i64(out, val);
+}
+
+static void out_arr(Buffer &out, std::size_t len) {
+    buf_append_u8(out, TAG_ARR);
+    buf_append_u32(out, len);
+}
+
+static void out_err(Buffer &out, uint32_t error_code) {
+    buf_append_u8(out, TAG_ERR);
+    buf_append_u32(out, error_code);
+}
 
 struct Response {
     uint32_t status{0};
@@ -180,23 +232,22 @@ static bool entry_eq(HNode *lhs, HNode *rhs) {
     return le->key == re->key;
 }
 
-static void do_get(std::vector<std::string> &cmd, Response &out) {
+static void do_get(std::vector<std::string> &cmd, Buffer &out) {
     Entry key;
     key.key.swap(cmd[1]);
     key.node.hash_value =
         str_hash((const uint8_t *)key.key.data(), key.key.size());
     HNode *node = hm_lookup(&g_data.db, &key.node, &entry_eq);
     if (!node) {
-        out.status = RES_NX;
-        return;
+        return out_err(out, RES_NX);
     }
 
     const std::string &val = container_of(node, Entry, node)->val;
     assert(val.size() <= MAX_MSG_SIZE);
-    out.data.assign(val.begin(), val.end());
+    return out_str(out, val.data(), val.size());
 }
 
-static void do_set(std::vector<std::string> &cmd, Response &out) {
+static void do_set(std::vector<std::string> &cmd, Buffer &out) {
     Entry key;
     key.key.swap(cmd[1]);
     key.node.hash_value =
@@ -211,9 +262,10 @@ static void do_set(std::vector<std::string> &cmd, Response &out) {
         ent->node.hash_value = key.node.hash_value;
         hm_insert(&g_data.db, &ent->node);
     }
+    return out_nil(out);
 }
 
-static void do_del(std::vector<std::string> &cmd, Response &out) {
+static void do_del(std::vector<std::string> &cmd, Buffer &out) {
     Entry key;
     key.key.swap(cmd[1]);
     key.node.hash_value =
@@ -222,9 +274,10 @@ static void do_del(std::vector<std::string> &cmd, Response &out) {
     if (node) {
         delete container_of(node, Entry, node);
     }
+    return out_int(out, node ? 1 : 0);
 }
 
-static void do_request(std::vector<std::string> &cmd, Response &out) {
+static void do_request(std::vector<std::string> &cmd, Buffer &out) {
 
     if (cmd.size() == 2 && cmd[0] == "get") {
         return do_get(cmd, out);
@@ -233,15 +286,28 @@ static void do_request(std::vector<std::string> &cmd, Response &out) {
     } else if (cmd.size() == 2 && cmd[0] == "del") {
         return do_del(cmd, out);
     } else {
-        out.status = RES_ERR;
+        return out_err(out, RES_ERR);
     }
 }
 
-static void make_response(const Response &resp, std::vector<uint8_t> &out) {
-    uint32_t resp_len = 4 + (uint32_t)resp.data.size();
-    buf_append(out, (const uint8_t *)&resp_len, 4);
-    buf_append(out, (const uint8_t *)&resp.status, 4);
-    buf_append(out, resp.data.data(), resp.data.size());
+static void response_begin(Buffer &out, std::size_t *header) {
+    *header = out.size();
+    buf_append_u32(out, 0);
+}
+
+static std::size_t response_size(Buffer &out, std::size_t header) {
+    return out.size() - header - 4;
+}
+
+static void response_end(Buffer &out, size_t header) {
+    std::size_t msg_size{response_size(out, header)};
+    if (msg_size > MAX_MSG_SIZE) {
+        out.resize(header + 4);
+        out_err(out, ERR_TOO_BIG);
+        msg_size = response_size(out, header);
+    }
+    uint32_t len{static_cast<uint32_t>(msg_size)};
+    memcpy(&out[header], &len, 4);
 }
 
 // process 1 request if there is enough data
@@ -270,9 +336,10 @@ static bool try_one_request(Conn *conn) {
         return false;
     }
 
-    Response resp;
-    do_request(cmd, resp);
-    make_response(resp, conn->outgoing);
+    std::size_t header_pos{0};
+    response_begin(conn->outgoing, &header_pos);
+    do_request(cmd, conn->outgoing);
+    response_end(conn->outgoing, header_pos);
 
     // got one request, do some application logic
     printf("client says: len:%d data:%.*s\n", len, len < 100 ? len : 100,
@@ -281,6 +348,17 @@ static bool try_one_request(Conn *conn) {
     // application logic done! remove the request message.
     buf_consume(conn->incoming, 4 + len);
     return true; // success
+}
+
+static bool cb_keys(HNode *node, void *arg) {
+    Buffer &out = *(Buffer *)arg;
+    const std::string &key = container_of(node, struct Entry, node)->key;
+    out_str(out, key.data(), key.size());
+    return true;
+}
+
+static void do_keys(std::vector<std::string> &, Buffer &out) {
+    out_arr(out, (uint32_t)hm_size(&g_data.db));
 }
 
 // application callback when the socket is writable
