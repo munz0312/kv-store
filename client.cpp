@@ -90,7 +90,7 @@ static int32_t print_response(const uint8_t *data, size_t size) {
         return 1;
     case TAG_ERR:
         if (size < 1 + 8) {
-            msg("bad response");
+            msg("bad response (TAG_ERR)");
             return -1;
         }
         {

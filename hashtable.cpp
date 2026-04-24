@@ -89,10 +89,10 @@ HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *)) {
 
 HNode *hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *)) {
     hm_help_rehashing(hmap);
-    if (auto from = h_lookup(&hmap->newer, key, eq)) {
+    if (HNode **from = h_lookup(&hmap->newer, key, eq)) {
         return h_detach(&hmap->newer, from);
     }
-    if (auto from = h_lookup(&hmap->older, key, eq)) {
+    if (HNode **from = h_lookup(&hmap->older, key, eq)) {
         return h_detach(&hmap->older, from);
     }
     return NULL;

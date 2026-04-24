@@ -112,11 +112,6 @@ static void out_err(Buffer &out, uint32_t error_code) {
     buf_append_u32(out, error_code);
 }
 
-struct Response {
-    uint32_t status{0};
-    std::vector<uint8_t> data;
-};
-
 static int set_nonblocking(int fd) {
     int flags = fcntl(fd, F_GETFL, 0);
     if (flags == -1)
@@ -277,6 +272,18 @@ static void do_del(std::vector<std::string> &cmd, Buffer &out) {
     return out_int(out, node ? 1 : 0);
 }
 
+static bool cb_keys(HNode *node, void *arg) {
+    Buffer &out = *(Buffer *)arg;
+    const std::string &key = container_of(node, struct Entry, node)->key;
+    out_str(out, key.data(), key.size());
+    return true;
+}
+
+static void do_keys(std::vector<std::string> &, Buffer &out) {
+    out_arr(out, (uint32_t)hm_size(&g_data.db));
+    hm_foreach(&g_data.db, &cb_keys, (void *)&out);
+}
+
 static void do_request(std::vector<std::string> &cmd, Buffer &out) {
 
     if (cmd.size() == 2 && cmd[0] == "get") {
@@ -285,13 +292,15 @@ static void do_request(std::vector<std::string> &cmd, Buffer &out) {
         return do_set(cmd, out);
     } else if (cmd.size() == 2 && cmd[0] == "del") {
         return do_del(cmd, out);
+    } else if (cmd.size() == 1 && cmd[0] == "keys") {
+        return do_keys(cmd, out);
     } else {
         return out_err(out, RES_ERR);
     }
 }
 
-static void response_begin(Buffer &out, std::size_t *header) {
-    *header = out.size();
+static void response_begin(Buffer &out, std::size_t &header) {
+    header = out.size();
     buf_append_u32(out, 0);
 }
 
@@ -337,7 +346,7 @@ static bool try_one_request(Conn *conn) {
     }
 
     std::size_t header_pos{0};
-    response_begin(conn->outgoing, &header_pos);
+    response_begin(conn->outgoing, header_pos);
     do_request(cmd, conn->outgoing);
     response_end(conn->outgoing, header_pos);
 
@@ -348,18 +357,6 @@ static bool try_one_request(Conn *conn) {
     // application logic done! remove the request message.
     buf_consume(conn->incoming, 4 + len);
     return true; // success
-}
-
-static bool cb_keys(HNode *node, void *arg) {
-    Buffer &out = *(Buffer *)arg;
-    const std::string &key = container_of(node, struct Entry, node)->key;
-    out_str(out, key.data(), key.size());
-    return true;
-}
-
-static void do_keys(std::vector<std::string> &, Buffer &out) {
-    out_arr(out, (uint32_t)hm_size(&g_data.db));
-    hm_foreach(&g_data.db, &cb_keys, (void *)&out);
 }
 
 // application callback when the socket is writable
