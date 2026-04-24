@@ -25,7 +25,7 @@ HNode *hm_lookup(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *));
 HNode *hm_delete(HMap *hmap, HNode *key, bool (*eq)(HNode *, HNode *));
 void hm_insert(HMap *hmap, HNode *node);
 void hm_clear(HMap *hmap);
-void hm_foreach(HMap *hmap, bool (*callback)(void *), void *arg);
+void hm_foreach(HMap *hmap, bool (*callback)(HNode *, void *), void *arg);
 std::size_t hm_size(HMap *hmap);
 
 #endif

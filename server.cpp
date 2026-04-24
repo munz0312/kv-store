@@ -359,6 +359,7 @@ static bool cb_keys(HNode *node, void *arg) {
 
 static void do_keys(std::vector<std::string> &, Buffer &out) {
     out_arr(out, (uint32_t)hm_size(&g_data.db));
+    hm_foreach(&g_data.db, &cb_keys, (void *)&out);
 }
 
 // application callback when the socket is writable
