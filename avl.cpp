@@ -1,22 +1,13 @@
-#include <algorithm>
+#include "avl.h"
+#include <cassert>
 #include <cstdint>
-struct AVLNode {
-    AVLNode *parent{nullptr};
-    AVLNode *left{nullptr};
-    AVLNode *right{nullptr};
-    uint32_t height{0};
-};
 
-inline void avl_init(AVLNode *node) {
-    node->left = node->right = node->parent = nullptr;
-    node->height = 1;
+static uint32_t max(uint32_t lhs, uint32_t rhs) {
+    return lhs < rhs ? rhs : lhs;
 }
 
-static uint32_t avl_height(AVLNode *node) { return node ? node->height : 0; }
-
 static void avl_update(AVLNode *node) {
-    node->height =
-        1 + std::max(avl_height(node->left), avl_height(node->right));
+    node->height = 1 + max(avl_height(node->left), avl_height(node->right));
 }
 
 static AVLNode *rot_left(AVLNode *node) {
@@ -61,4 +52,85 @@ static AVLNode *avl_fix_left(AVLNode *node) {
     }
 
     return rot_right(node);
+}
+
+static AVLNode *avl_fix_right(AVLNode *node) {
+    if (avl_height(node->right->right) < avl_height(node->right->left)) {
+        node->right = rot_right(node->right);
+    }
+
+    return rot_left(node);
+}
+
+AVLNode *avl_fix(AVLNode *node) {
+    while (true) {
+        AVLNode **from{&node};
+        AVLNode *parent{node->parent};
+
+        if (parent) {
+            from = (parent->left == node) ? &parent->left : &parent->right;
+        }
+
+        avl_update(node);
+
+        uint32_t l{avl_height(node->left)};
+        uint32_t r{avl_height(node->right)};
+
+        if (l == r + 2) {
+            *from = avl_fix_left(node);
+        } else if (l + 2 == r) {
+            *from = avl_fix_right(node);
+        }
+
+        if (!parent) {
+            return *from;
+        }
+
+        node = parent;
+    }
+}
+
+static AVLNode *avl_del_easy(AVLNode *node) {
+    assert(!node->left || !node->right);
+    AVLNode *child = node->left ? node->left : node->right;
+    AVLNode *parent = node->parent;
+
+    if (child) {
+        child->parent = parent;
+    }
+
+    if (!parent) {
+        return child;
+    }
+
+    AVLNode **from = (parent->left == node) ? &parent->left : &parent->right;
+    *from = child;
+    return avl_fix(parent);
+}
+
+AVLNode *avl_del(AVLNode *node) {
+    if (!node->left || !node->right) {
+        return avl_del_easy(node);
+    }
+    AVLNode *victim{node->right};
+    while (victim->left) {
+        victim = victim->left;
+    }
+
+    AVLNode *root{avl_del_easy(victim)};
+    *victim = *node;
+    if (victim->left) {
+        victim->left->parent = victim;
+    }
+    if (victim->right) {
+        victim->right->parent = victim;
+    }
+
+    AVLNode **from = &root;
+    AVLNode *parent = node->parent;
+    if (parent) {
+        from = (parent->left == node) ? &parent->left : &parent->right;
+    }
+    *from = victim;
+    return root;
 }

@@ -3,7 +3,7 @@ CXXFLAGS = -std=c++20 -Wall -Wextra -Wpedantic -O2
 
 all: server client
 
-server: server.o hashtable.o
+server: server.o hashtable.o avl.o
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 client: client.cpp
@@ -13,6 +13,9 @@ server.o: server.cpp hashtable.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 hashtable.o: hashtable.cpp hashtable.h
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+avl.o: avl.cpp avl.h
 	$(CXX) $(CXXFLAGS) -c -o $@ $<
 
 clean:
